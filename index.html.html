@@ -1,0 +1,249 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ferrous Ion Estimation</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    color:#065f46;
+    text-align:center;
+    padding:15px;
+
+    /* Smooth chemistry background */
+    background: url('https://images.unsplash.com/photo-1581091012184-5c2af7b59f85?auto=format&fit=crop&w=1400&q=60')
+                no-repeat center center fixed;
+    background-size: cover;
+
+    backdrop-filter: blur(3px);
+  }
+
+  h1 {
+    font-size:26px;
+    margin:15px 0;
+    color:#064e3b;
+    font-weight:650;
+    letter-spacing:0.5px;
+  }
+
+  .container {
+    background: rgba(255,255,255,0.9);
+    padding:25px;
+    margin:15px auto;
+    border-radius:16px;
+    max-width:680px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.18);
+  }
+
+  p {
+    font-size:15px;
+    color:#0f5132;
+  }
+
+  textarea {
+    width:92%;
+    height:70px;
+    margin:8px 0 14px;
+    border-radius:8px;
+    border:1px solid #cbd5e1;
+    font-family:monospace;
+    font-size:14px;
+    padding:8px;
+  }
+
+  label {
+    display:block;
+    font-size:14px;
+    margin:8px 0 4px;
+    text-align:left;
+    padding-left:4%;
+    color:#064e3b;
+    font-weight:500;
+  }
+
+  input {
+    width:180px;
+    padding:7px;
+    border-radius:6px;
+    border:1px solid #cbd5e1;
+    font-size:14px;
+    margin-top:4px;
+  }
+
+  button {
+    background:#16a34a;
+    color:#fff;
+    border:none;
+    padding:10px 20px;
+    margin:10px 6px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:14px;
+    font-weight:550;
+    transition:0.2s ease-in-out;
+  }
+
+  button:hover { background:#15803d; }
+
+  #result {
+    margin-top:18px;
+    font-size:15px;
+    font-weight:600;
+    color:#064e3b;
+    line-height:1.5;
+  }
+
+  canvas {
+    max-width:100%;
+    margin-top:25px;
+    border-radius:6px;
+  }
+</style>
+</head>
+
+<body>
+
+<h1>Ferrous Ion Estimation Tool</h1>
+
+<div class="container">
+
+  <p>
+    Enter your titration readings below. Separate the numbers using commas.
+  </p>
+
+  <p><b>Volume Added (mL):</b></p>
+  <textarea id="volume" placeholder="Example: 0, 1, 2, 3, 4, 5 ..."></textarea>
+
+  <p><b>Potential Reading (mV):</b></p>
+  <textarea id="potential" placeholder="Example: 310, 320, 340, 370, 420 ..."></textarea>
+
+  <hr style="margin:18px 0; border-color:#bbf7d0;">
+
+  <h3 style="margin-top:10px; color:#065f46;">Additional Inputs</h3>
+
+  <p style="font-size:14px; margin-top:-5px; color:#0f5132;">
+    These are required to calculate the strength and weight of FAS.
+  </p>
+
+  <label>Potassium Dichromate Strength (A) in Normality:
+    <input type="number" id="A" step="0.0001" placeholder="Enter A value">
+  </label>
+
+  <label>Volume of FAS Taken (C) in mL:
+    <input type="number" id="C" step="0.01" placeholder="Enter C value">
+  </label>
+
+  <div>
+    <button id="example">Fill Example Data</button>
+    <button id="analyze">Analyze Readings</button>
+  </div>
+
+  <div id="result"></div>
+
+  <canvas id="curveChart"></canvas>
+
+</div>
+
+<script>
+let curveChart;
+
+const vLinePlugin = {
+  id: 'vLinePlugin',
+  afterDatasetsDraw(chart, args, options) {
+    const {ctx, chartArea:{top, bottom}, scales:{x}} = chart;
+    if (options.value !== undefined) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x.getPixelForValue(options.value), top);
+      ctx.lineTo(x.getPixelForValue(options.value), bottom);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#16a34a';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+};
+
+document.getElementById('example').addEventListener('click', () => {
+  document.getElementById('volume').value = '0,1,2,3,4,5,6,7,8,9,10';
+  document.getElementById('potential').value = '310,320,340,370,420,510,560,580,590,595,597';
+});
+
+document.getElementById('analyze').addEventListener('click', () => {
+
+  const vol = document.getElementById('volume').value.split(',').map(Number);
+  const pot = document.getElementById('potential').value.split(',').map(Number);
+
+  if (vol.length !== pot.length || vol.length < 3) {
+    alert('Please check: Both lists must have the same number of values.');
+    return;
+  }
+
+  let maxDiff = 0;
+  let eqIndex = 0;
+
+  for (let i = 1; i < pot.length; i++) {
+    const diff = pot[i] - pot[i - 1];
+    if (diff > maxDiff) {
+      maxDiff = diff;
+      eqIndex = i;
+    }
+  }
+
+  const V_eq = vol[eqIndex];
+  const A = parseFloat(document.getElementById('A').value);
+  const C = parseFloat(document.getElementById('C').value);
+
+  document.getElementById('result').innerHTML = (() => {
+
+    if (isNaN(A) || isNaN(C)) {
+      return `
+        <b>Equivalence Point:</b> ${V_eq.toFixed(2)} mL<br>
+        <span style='color:red'>Please enter both A and C values to get full calculations.</span>
+      `;
+    }
+
+    const fasStrength = (A * V_eq) / C;
+    const fasWeight = fasStrength * 394.14;
+
+    return `
+      <b>Equivalence Point (B):</b> ${V_eq.toFixed(2)} mL<br>
+      <b>Strength of FAS:</b> ${fasStrength.toFixed(4)} N<br>
+      <b>Weight of FAS in 1 dm³:</b> ${fasWeight.toFixed(2)} g
+    `;
+  })();
+
+  const ctx = document.getElementById('curveChart');
+  if (curveChart) curveChart.destroy();
+
+  curveChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: vol,
+      datasets: [{
+        label: 'Potential (mV)',
+        data: pot,
+        borderColor: '#16a34a',
+        backgroundColor: '#bbf7d0',
+        tension: 0.3,
+        pointRadius: 3
+      }]
+    },
+    options: {
+      plugins: { legend:{display:true}, vLinePlugin:{value:V_eq} },
+      scales: {
+        x: { title:{display:true, text:'Volume (mL)'} },
+        y: { title:{display:true, text:'Potential (mV)'} }
+      },
+      animation: { duration: 900 }
+    },
+    plugins: [vLinePlugin]
+  });
+
+});
+</script>
+
+</body>
+</html>
